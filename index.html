@@ -461,6 +461,22 @@
             return currentUser.roleKey === 'student' || currentUser.role.includes('นักเรียน') || currentUser.role.includes('นักศึกษา');
         }
 
+        // Helper: ดึงช่วงเวลาที่ถูกจองแล้วของสนามและวันที่กำหนด
+        function getBookedSlotsForCourt(courtId, playDate) {
+            const bookedSlots = [];
+            myBookings.forEach(booking => {
+                // กรองเฉพาะรายการที่ไม่ถูกยกเลิก (status !== 'cancelled')
+                if (booking.courtId === courtId && booking.playDate === playDate && booking.status !== 'cancelled') {
+                    if (Array.isArray(booking.timeSlots)) {
+                        bookedSlots.push(...booking.timeSlots);
+                    } else if (booking.timeSlot) {
+                        bookedSlots.push(booking.timeSlot);
+                    }
+                }
+            });
+            return bookedSlots;
+        }
+
         // Auth Tab Switcher
         function switchAuthTab(tab) {
             if (tab === 'login') {
@@ -482,7 +498,6 @@
             const username = document.getElementById('loginUsername').value;
             const roleSelect = document.getElementById('loginRole');
             const roleKey = roleSelect.value;
-            const roleText = roleSelect.options[roleSelect.selectedIndex].text;
 
             currentUser = {
                 name: username,
@@ -655,22 +670,43 @@
             document.getElementById('bookingModal').classList.remove('hidden');
         }
 
-        // Render Time Slot Buttons
+        // Render Time Slot Buttons (แสดงสีแดงสำหรับช่วงเวลาที่ถูกจองแล้ว)
         function renderSlotPicker() {
             const container = document.getElementById('timeSlotsContainer');
             container.innerHTML = '';
 
+            const courtId = parseInt(document.getElementById('modalCourtId').value);
+            const playDate = document.getElementById('modalDisplayDate').value;
+            const bookedSlots = getBookedSlotsForCourt(courtId, playDate);
+
             availableSlots.forEach(slot => {
+                const isBooked = bookedSlots.includes(slot);
                 const isSelected = selectedSlots.includes(slot);
-                const btnClass = isSelected 
-                    ? "bg-brand-500 text-slate-950 font-bold border-brand-400 shadow-md scale-[1.02]" 
-                    : "bg-slate-800/80 text-slate-300 border-slate-700/80 hover:bg-slate-700 hover:text-white";
+
+                let btnClass = "";
+                if (isBooked) {
+                    // สถานะ: จองแล้ว (สีแดง ปิดไม่ให้กด)
+                    btnClass = "bg-red-500/20 text-red-400 border-red-500/40 cursor-not-allowed opacity-80";
+                } else if (isSelected) {
+                    // สถานะ: กำลังเลือก (สีเขียวแบรนด์)
+                    btnClass = "bg-brand-500 text-slate-950 font-bold border-brand-400 shadow-md scale-[1.02]";
+                } else {
+                    // สถานะ: ว่าง (สีปกติ)
+                    btnClass = "bg-slate-800/80 text-slate-300 border-slate-700/80 hover:bg-slate-700 hover:text-white";
+                }
 
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = `p-2 rounded-xl text-[11px] border transition-all flex items-center justify-center gap-1 ${btnClass}`;
-                btn.innerHTML = `<i class="fa-regular fa-clock text-[10px]"></i> ${slot}`;
-                btn.onclick = () => toggleSlot(slot);
+                
+                if (isBooked) {
+                    btn.disabled = true;
+                    btn.innerHTML = `<i class="fa-solid fa-ban text-[10px]"></i> ${slot} <span class="text-[9px] font-semibold">(จองแล้ว)</span>`;
+                } else {
+                    btn.innerHTML = `<i class="fa-regular fa-clock text-[10px]"></i> ${slot}`;
+                    btn.onclick = () => toggleSlot(slot);
+                }
+                
                 container.appendChild(btn);
             });
         }
