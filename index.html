@@ -138,14 +138,6 @@
                         </div>
                     </div>
 
-                    <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1.5">สถานะผู้ใช้งาน (รับส่วนลด 20% สำหรับนักเรียน/นักศึกษา)</label>
-                        <select id="loginRole" class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-500">
-                            <option value="student">🎓 นักเรียน / นักศึกษา (รับส่วนลด 20%)</option>
-                            <option value="general" selected>👤 บุคคลทั่วไป</option>
-                        </select>
-                    </div>
-
                     <button type="submit" class="w-full bg-brand-500 hover:bg-brand-600 text-slate-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 mt-2">
                         <i class="fa-solid fa-right-to-bracket"></i>
                         เข้าสู่ระบบ
@@ -166,10 +158,16 @@
 
                     <div>
                         <label class="block text-xs font-medium text-slate-300 mb-1.5">สถานะผู้ใช้งาน</label>
-                        <select id="regRole" class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-500">
-                            <option value="student">🎓 นักเรียน / นักศึกษา (ลด 20%)</option>
+                        <select id="regRole" onchange="toggleStudentIdInput()" class="w-full bg-slate-900/80 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-500">
                             <option value="general" selected>👤 บุคคลทั่วไป</option>
+                            <option value="student">🎓 นักเรียน / นักศึกษา (รับส่วนลด 20%)</option>
                         </select>
+                    </div>
+
+                    <!-- Student ID Field (Shows conditionally) -->
+                    <div id="studentIdContainer" class="hidden">
+                        <label class="block text-xs font-medium text-emerald-400 mb-1.5"><i class="fa-solid fa-id-card mr-1"></i> รหัสนักศึกษา</label>
+                        <input type="text" id="regStudentId" placeholder="เช่น 6501234567" class="w-full bg-slate-900/80 border border-emerald-500/50 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-400">
                     </div>
 
                     <div>
@@ -439,6 +437,7 @@
         ];
 
         // Global Storage state
+        let registeredUsers = JSON.parse(localStorage.getItem('sportspace_registered_users')) || [];
         let currentUser = JSON.parse(localStorage.getItem('sportspace_current_user')) || null;
         let myBookings = JSON.parse(localStorage.getItem('sportspace_bookings')) || [];
         let selectedSlots = [];
@@ -455,17 +454,32 @@
             updateHistoryBadge();
         });
 
+        // Toggle Student ID Field
+        function toggleStudentIdInput() {
+            const roleSelect = document.getElementById('regRole');
+            const studentIdContainer = document.getElementById('studentIdContainer');
+            const regStudentId = document.getElementById('regStudentId');
+
+            if (roleSelect.value === 'student') {
+                studentIdContainer.classList.remove('hidden');
+                regStudentId.required = true;
+            } else {
+                studentIdContainer.classList.add('hidden');
+                regStudentId.required = false;
+                regStudentId.value = '';
+            }
+        }
+
         // Helper: Check Student Status
         function isUserStudent() {
             if (!currentUser) return false;
-            return currentUser.roleKey === 'student' || currentUser.role.includes('นักเรียน') || currentUser.role.includes('นักศึกษา');
+            return currentUser.roleKey === 'student' || (currentUser.role && (currentUser.role.includes('นักเรียน') || currentUser.role.includes('นักศึกษา')));
         }
 
         // Helper: ดึงช่วงเวลาที่ถูกจองแล้วของสนามและวันที่กำหนด
         function getBookedSlotsForCourt(courtId, playDate) {
             const bookedSlots = [];
             myBookings.forEach(booking => {
-                // กรองเฉพาะรายการที่ไม่ถูกยกเลิก (status !== 'cancelled')
                 if (booking.courtId === courtId && booking.playDate === playDate && booking.status !== 'cancelled') {
                     if (Array.isArray(booking.timeSlots)) {
                         bookedSlots.push(...booking.timeSlots);
@@ -495,15 +509,23 @@
         // Login Handler
         function handleLogin(e) {
             e.preventDefault();
-            const username = document.getElementById('loginUsername').value;
-            const roleSelect = document.getElementById('loginRole');
-            const roleKey = roleSelect.value;
+            const usernameInput = document.getElementById('loginUsername').value.trim();
 
-            currentUser = {
-                name: username,
-                roleKey: roleKey,
-                role: roleKey === 'student' ? 'นักเรียน / นักศึกษา (รับส่วนลด 20%)' : 'สมาชิกทั่วไป'
-            };
+            // ค้นหาผู้ใช้ที่เคยสมัครไว้
+            const foundUser = registeredUsers.find(u => u.username.toLowerCase() === usernameInput.toLowerCase());
+
+            if (foundUser) {
+                currentUser = foundUser;
+            } else {
+                // สำหรับกรณีผู้ใช้ล็อกอินโดยตรง ให้ตั้งสถานะเริ่มต้นเป็นสมาชิกทั่วไป
+                currentUser = {
+                    name: usernameInput,
+                    username: usernameInput,
+                    roleKey: 'general',
+                    studentId: '',
+                    role: 'สมาชิกทั่วไป'
+                };
+            }
 
             localStorage.setItem('sportspace_current_user', JSON.stringify(currentUser));
             checkAuthStatus();
@@ -512,18 +534,38 @@
         // Register Handler
         function handleRegister(e) {
             e.preventDefault();
-            const name = document.getElementById('regFullName').value;
+            const name = document.getElementById('regFullName').value.trim();
+            const username = document.getElementById('regUsername').value.trim();
             const roleSelect = document.getElementById('regRole');
             const roleKey = roleSelect.value;
+            const studentId = document.getElementById('regStudentId').value.trim();
 
-            currentUser = {
+            if (roleKey === 'student' && !studentId) {
+                alert('กรุณากรอกรหัสนักศึกษาให้เรียบร้อยครับ');
+                return;
+            }
+
+            const roleText = roleKey === 'student' 
+                ? `🎓 นักศึกษา (รหัส: ${studentId})` 
+                : '👤 สมาชิกทั่วไป';
+
+            const newUser = {
                 name: name,
+                username: username,
                 roleKey: roleKey,
-                role: roleKey === 'student' ? 'นักเรียน / นักศึกษา (รับส่วนลด 20%)' : 'สมาชิกทั่วไป'
+                studentId: studentId,
+                role: roleText
             };
 
+            // บันทึกเข้าฐานข้อมูลผู้ใช้ที่ลงทะเบียน
+            registeredUsers = registeredUsers.filter(u => u.username.toLowerCase() !== username.toLowerCase());
+            registeredUsers.push(newUser);
+            localStorage.setItem('sportspace_registered_users', JSON.stringify(registeredUsers));
+
+            currentUser = newUser;
             localStorage.setItem('sportspace_current_user', JSON.stringify(currentUser));
-            alert('สมัครสมาชิกสำเร็จ! กำลังนำคุณเข้าสู่ระบบ...');
+            
+            alert('สมัครสมาชิกสำเร็จ! ยินดีต้อนรับสู่ระบบ');
             checkAuthStatus();
         }
 
@@ -685,13 +727,10 @@
 
                 let btnClass = "";
                 if (isBooked) {
-                    // สถานะ: จองแล้ว (สีแดง ปิดไม่ให้กด)
                     btnClass = "bg-red-500/20 text-red-400 border-red-500/40 cursor-not-allowed opacity-80";
                 } else if (isSelected) {
-                    // สถานะ: กำลังเลือก (สีเขียวแบรนด์)
                     btnClass = "bg-brand-500 text-slate-950 font-bold border-brand-400 shadow-md scale-[1.02]";
                 } else {
-                    // สถานะ: ว่าง (สีปกติ)
                     btnClass = "bg-slate-800/80 text-slate-300 border-slate-700/80 hover:bg-slate-700 hover:text-white";
                 }
 
@@ -784,7 +823,7 @@
                 discountAmount: discountAmount,
                 isStudentDiscount: isStudent,
                 amount: netAmount,
-                status: 'active', // 'active' หรือ 'cancelled'
+                status: 'active',
                 paymentStatus: 'ชำระเงินแล้ว (สำเร็จ)',
                 bookingDate: new Date().toLocaleDateString('th-TH'),
                 hasReviewed: false
